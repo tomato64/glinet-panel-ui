@@ -5,6 +5,7 @@ import * as ubus from 'ubus';
 import * as uci from 'uci';
 import * as uloop from 'uloop';
 import { readfile } from 'fs';
+import * as t64 from './tomato64.uc';
 
 const IFTYPE_AP = 3;
 
@@ -184,9 +185,7 @@ function netdev_counters(device) {
  * Call at start up and on a network.interface event, never from the tick.
  */
 export function wan_device_read() {
-	let wan = ubus_call('network.interface.wan', 'status');
-
-	state.wan_device = wan?.l3_device ?? wan?.device;
+	state.wan_device = t64.wan_device();
 };
 
 function wan_read() {
@@ -242,31 +241,27 @@ function cpu_read() {
 }
 
 function sysinfo_read() {
-	let info = ubus_call('system', 'info');
+	let info = t64.sysinfo();
 
-	if (!info)
-		return;
+	if (info.mem != null)
+		state.mem = info.mem;
 
-	let mem = info.memory;
-
-	if (mem?.total > 0)
-		state.mem = int((mem.total - mem.available) * 100 / mem.total);
-
-	let root = info.root;
-
-	if (root?.total > 0)
-		state.flash = int(root.used * 100 / root.total);
+	if (info.flash != null)
+		state.flash = info.flash;
 }
 
 function interfaces_read() {
-	let dump = ubus_call('network.interface', 'dump');
-	let found = {};
+	state.iface = t64.interfaces();
 
-	for (let entry in dump?.interface ?? [])
-		if (entry?.interface)
-			found[entry.interface] = entry;
+	/* Also refreshed here: there is no network.interface event to re-read
+	   it on, and at boot httpd may not be answering yet. A new device gets a
+	   fresh baseline so its counters do not read as one huge interval. */
+	let wan = state.iface.wan?.device;
 
-	state.iface = found;
+	if (wan && wan != state.wan_device) {
+		state.wan_device = wan;
+		state.wan_ts = null;
+	}
 }
 
 const BAND_5	= 2500;
@@ -551,17 +546,7 @@ function snoop_entry(record, entry) {
 }
 
 function clients_read() {
-	let dump = ubus_call('dhcpsnoop', 'dump') ?? {};
-	let found = {};
-
-	for (let mac, entry in dump) {
-		let record = {};
-
-		snoop_entry(record, entry);
-		found[lc(mac)] = record;
-	}
-
-	leases_read(found);
+	let found = t64.clients();
 
 	for (let mac, record in found)
 		record.type = client_type(record);
@@ -575,39 +560,15 @@ function ports_list() {
 	if (ports_cached)
 		return ports_cached;
 
-	let board = readfile('/etc/board.json');
+	/* Cached only once non-empty: at boot httpd may not be answering, and
+	   ucode treats an empty array as true, so caching [] would stop the
+	   list from ever being fetched again. */
+	let found = t64.ports();
 
-	if (!board)
-		return [];
+	if (length(found))
+		ports_cached = found;
 
-	let parsed;
-
-	try {
-		parsed = json(board);
-	}
-	catch (e) {
-		return [];
-	}
-
-	let network = parsed?.network;
-	let out = [];
-
-	if (network?.wan?.device)
-		push(out, { name: 'WAN', device: network.wan.device });
-
-	let lan = network?.lan?.ports;
-
-	if (type(lan) != 'array')
-		lan = network?.lan?.device ? [ network.lan.device ] : [];
-
-	for (let i = 0; i < length(lan); i++)
-		push(out, { name: length(lan) > 1 ? sprintf('LAN %d', i + 1)
-						  : 'LAN',
-			    device: lan[i] });
-
-	ports_cached = out;
-
-	return out;
+	return found;
 }
 
 const DUPLEX_HALF = 0;
