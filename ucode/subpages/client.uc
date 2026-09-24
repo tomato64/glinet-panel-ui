@@ -44,32 +44,40 @@ function uptime_of(seconds) {
 	return sprintf('%dm', int(seconds / 60));
 }
 
+/*
+ * A client with no station is a wired one, not an absent one - the page lists
+ * everything on the LAN bridges now, so arriving here without an association
+ * is the normal case for half of them. Everything the station would have said
+ * is simply left out.
+ */
 function rows_of() {
 	let station = station_of();
+	let record = state.clients[mac];
 
-	if (!station)
+	if (!station && !record)
 		return [];
 
-	let record = state.clients[mac];
 	let out = [];
 
-	if (record?.type)
+	push(out, [ 'Connection', station ? 'Wi-Fi' : 'Wired' ]);
+
+	if (record?.type && station)
 		push(out, [ 'Type', TYPE_NAMES[record.type] ?? 'Device' ]);
 
 	if (record?.ip)
 		push(out, [ 'Address', record.ip ]);
 
-	if (station.ssid)
+	if (station?.ssid)
 		push(out, [ 'Network', station.band
 			    ? sprintf('%s · %s', station.ssid, station.band)
 			    : station.ssid ]);
 
-	if (station.signal != null)
+	if (station?.signal != null)
 		push(out, [ 'Signal', sprintf('−%d dBm', -station.signal) ]);
 
 	push(out, [ 'MAC', uc(mac) ]);
 
-	let up = uptime_of(station.uptime);
+	let up = uptime_of(station?.uptime);
 
 	if (up)
 		push(out, [ 'Connected', up ]);
@@ -101,7 +109,7 @@ function page_build(parent, ctx) {
 	let scroll = list_new(parent, { title, indented: true,
 					height: LIST_H_SUB, activity });
 
-	list = rows_new(scroll, { empty: 'Not connected', activity });
+	list = rows_new(scroll, { empty: 'Gone', activity });
 
 	page_update(null);
 }
