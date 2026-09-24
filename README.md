@@ -1,5 +1,19 @@
 # glinet-panel-ui
 
+> **This is Tomato64's fork** of [blogic/glinet-panel-ui](https://github.com/blogic/glinet-panel-ui),
+> carrying the changes that let the panel run on [Tomato64](https://tomato64.org)
+> firmware rather than OpenWrt. Work happens on the `tomato64` branch; upstream
+> is merged in with `git merge upstream/main`, and anything useful to everyone
+> is meant to go back as a pull request. Everything below is blogic's, and so is
+> the design.
+>
+> What the fork adds: `ucode/lib/{api,tomato64}.uc` read the router through
+> Tomato64's httpd JSON API in place of the OpenWrt services the sampler
+> expects; `ucode/lib/remote.uc` lets Tomato64's web interface mirror the panel
+> and drive it with a mouse; `ucode/pages/menu.uc` puts every page one tap away;
+> `ucode/boot_tomato64.uc` is a boot splash; and `tomato64/` holds the scripts
+> that run and supervise all of it where there is no procd.
+
 The front panel interface for the GL.iNet BE10000 and BE14000: a 320x240 DRM
 display with a capacitive touchscreen, driven from ucode.
 
