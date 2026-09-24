@@ -11,6 +11,7 @@ import { ui_build, ui_seed, view_status, view_goto, view_open,
 import { page_load, pages_load } from './lib/loader.uc';
 import { runtime_init, runtime_start, runtime_wake,
 	 settings } from './lib/runtime.uc';
+import { remote_init } from './lib/remote.uc';
 
 const SHOT_DIR = '/tmp';
 
@@ -111,6 +112,9 @@ boot_applet_retire();
 ui_seed();
 
 runtime_start();
+
+/* The web UI's screen page: a capture of the panel, and pointer input. */
+remote_init();
 
 ubus.listener('network.interface', function() {
 	wan_device_read();
