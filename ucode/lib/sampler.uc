@@ -52,6 +52,7 @@ export const state = {
 	stations: [],
 	clients: {},
 	ports: [],
+	vpn: [],
 	weather: null
 };
 
@@ -614,6 +615,11 @@ function port_link(device) {
 	return port_link_gnl(device) ?? port_link_sysfs(device);
 }
 
+/* Tomato64: every tunnel the firmware can run, from the httpd API. */
+function vpn_read() {
+	state.vpn = t64.vpn();
+}
+
 function ports_read() {
 	if (gnl && !ethtool) {
 		try {
@@ -836,6 +842,7 @@ const SOURCES = [
 	{ name: 'stations',   ms: MS_SLOW, read: stations_read },
 	{ name: 'clients',    ms: MS_SLOW, read: clients_read },
 	{ name: 'ports',      ms: MS_SLOW, read: ports_read },
+	{ name: 'vpn',        ms: MS_SLOW, read: vpn_read },
 	{ name: 'weather',    ms: MS_WX,   retain: true, broadcast: true,
 	  read: weather_read }
 ];

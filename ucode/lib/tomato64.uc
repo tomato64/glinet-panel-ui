@@ -107,6 +107,16 @@ export function clients() {
 	return out;
 };
 
+/*
+ * The tunnels this firmware can run, up or down, as the API reports them:
+ * { kind, service, index, name, enabled, up }. The service name is rc's, so a
+ * page that offers to connect one has the argument for `service <name> start`
+ * without having to know how the firmware spells it.
+ */
+export function vpn() {
+	return api_get('vpn')?.vpn ?? [];
+};
+
 function eth_index(dev) {
 	let m = match(dev, /([0-9]+)$/);
 

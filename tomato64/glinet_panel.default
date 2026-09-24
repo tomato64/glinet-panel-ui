@@ -45,6 +45,7 @@ config panel
 	list pages 'clients'
 	list pages 'interfaces'
 	list pages 'ports'
+	list pages 'vpn'
 	list pages 'system'
 	list pages 'brightness'
 	list pages 'reboot'

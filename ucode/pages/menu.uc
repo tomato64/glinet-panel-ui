@@ -40,6 +40,7 @@ const TITLES = {
 	ports:		'Ports',
 	system:		'System',
 	brightness:	'Brightness',
+	vpn:		'VPN',
 	reboot:		'Reboot'
 };
 
