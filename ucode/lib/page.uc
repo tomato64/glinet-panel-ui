@@ -27,6 +27,22 @@ let stack = [];
 let screen, tileview, lock_page, lock_screen, pin_page, pin_screen;
 let background;
 let scroll_pages = true;
+
+/* The page the menu button and a downward swipe return to. Absent from the
+   configured list, both do nothing rather than going somewhere arbitrary. */
+const HOME_PAGE = 'menu';
+
+/* The button's nine dots, and where they sit: one hit area to the left of the
+   lock, with the dots at the same inset within it. */
+const HOME_DOT		= 3;
+const HOME_DOT_GAP	= 2;
+const HOME_SIZE		= 3 * HOME_DOT + 2 * HOME_DOT_GAP;
+const HOME_INSET	= LOCK_X - (W - LOCK_HIT);
+
+/* view_goto() is declared at the end of this file, and ucode binds a function
+   declaration where it appears, so naming it before then compiles to a global
+   that does not exist. Set once the declaration has been passed. */
+let goto_root;
 let active = 0;
 let locked, pinning;
 let activity_fn, wake_fn, defer_fn, idle_fn, brightness_fns;
@@ -137,6 +153,27 @@ function tile_changed() {
 function root_swipe() {
 	let dir = lv.gesture_dir();
 	let step = 0;
+
+	/* Reaches here from anywhere the page is not scrolling vertically
+	   itself. The tileview never is, so this does not disturb the left and
+	   right it handles. */
+	if (dir == lv.DIR_BOTTOM) {
+		activity_dispatch();
+
+		if (locked || pinning || length(stack))
+			return;
+
+		defer(function() {
+			goto_root(HOME_PAGE);
+		});
+
+		return;
+	}
+
+	/* In scroll mode the tileview moves the pages, and stepping here as
+	   well would move them twice. */
+	if (scroll_pages)
+		return;
 
 	if (dir == lv.DIR_LEFT)
 		step = 1;
@@ -278,6 +315,60 @@ function lock_build(parent) {
 	return hit;
 }
 
+/*
+ * A grid of dots rather than a glyph: the icon set has no menu mark, and nine
+ * small boxes say "all the pages" clearly enough at this size.
+ */
+function home_build(parent) {
+	let hit = lv.obj(parent);
+
+	hit.set({ x: W - 2 * LOCK_HIT, y: 0, w: LOCK_HIT, h: LOCK_HIT });
+	hit.style({ bg_opa: lv.OPA_TRANSP, border_width: 0, pad_all: 0,
+		    radius: 0 });
+	hit.clickable(true);
+	hit.scrollable(false);
+
+	let mark = lv.obj(hit);
+
+	mark.set({ x: HOME_INSET, y: LOCK_Y + int((LOCK_SIZE - HOME_SIZE) / 2),
+		   w: HOME_SIZE, h: HOME_SIZE });
+	mark.style({ bg_opa: lv.OPA_TRANSP, border_width: 0, pad_all: 0 });
+	mark.clickable(false);
+	mark.scrollable(false);
+
+	for (let row = 0; row < 3; row++)
+		for (let col = 0; col < 3; col++) {
+			let dot = lv.obj(mark);
+
+			dot.set({ x: col * (HOME_DOT + HOME_DOT_GAP),
+				  y: row * (HOME_DOT + HOME_DOT_GAP),
+				  w: HOME_DOT, h: HOME_DOT });
+			dot.style({ bg_color: C_TXT, bg_opa: lv.OPA_COVER,
+				    radius: 1, border_width: 0, pad_all: 0 });
+			dot.clickable(false);
+			dot.scrollable(false);
+		}
+
+	hit.on(lv.EVENT_CLICKED, function() {
+		activity_dispatch();
+
+		defer(function() {
+			goto_root(HOME_PAGE);
+		});
+	});
+
+	return hit;
+}
+
+function page_names() {
+	let names = [];
+
+	for (let page in pages)
+		push(names, page.name);
+
+	return names;
+}
+
 function back_build(parent) {
 	let obj = lv.obj(parent);
 
@@ -385,8 +476,12 @@ function tiles_build() {
 	for (let i = 0; i < count; i++) {
 		pages[i].build(tiles[i], { ...ctx, config: pages[i].config });
 
-		if (!pages[i].test)
+		if (!pages[i].test) {
 			lock_build(tiles[i]);
+
+			if (pages[i].name != HOME_PAGE)
+				home_build(tiles[i]);
+		}
 	}
 }
 
@@ -489,6 +584,7 @@ export function ui_build(page_list, lock, pin, pin_code, bg, scroll, clock_24h) 
 
 	ctx = { state, points: CHART_POINTS, activity: activity_dispatch,
 		open: nav_open, back: nav_back, defer,
+		goto: goto_root, page_names,
 		brightness: {
 			get: function() {
 				return brightness_fns?.get() ?? 100;
@@ -512,10 +608,10 @@ export function ui_build(page_list, lock, pin, pin_code, bg, scroll, clock_24h) 
 	tileview.scrollbar(lv.SCROLLBAR_OFF);
 	tileview.on(lv.EVENT_VALUE_CHANGED, tile_changed);
 
-	if (!scroll_pages) {
+	if (!scroll_pages)
 		tileview.scrollable(false);
-		screen.on(lv.EVENT_GESTURE, root_swipe);
-	}
+
+	screen.on(lv.EVENT_GESTURE, root_swipe);
 
 	tiles_build();
 
@@ -625,6 +721,8 @@ export function view_goto(which) {
 
 	return true;
 };
+
+goto_root = view_goto;
 
 /**
  * view_open - open a sub page
