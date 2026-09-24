@@ -71,6 +71,11 @@ export function gauge_new(parent, opts) {
 	let low = opts.low ?? SWEEP_LOW;
 	let high = opts.high ?? SWEEP_HIGH;
 	let unit = opts.unit ?? '';
+	/* The reading stays in the units the ring and the threshold ladder are
+	   drawn in - percentages, or degrees Celsius - and this turns it into
+	   what the person reads. A temperature shown in Fahrenheit would
+	   otherwise sail past a ladder that counts 85 as critical. */
+	let convert = opts.convert;
 	let root = flow_new(parent, { dir: 'row', gap: GAP, cross: 'centre',
 				      main: right ? 'end' : 'start' });
 	let arc;
@@ -103,7 +108,9 @@ export function gauge_new(parent, opts) {
 		}
 
 		root.hidden(false);
-		text_set(reading, sprintf('%d%s', int(value), unit));
+		text_set(reading, sprintf('%d%s',
+					  int(convert ? convert(value) : value),
+					  unit));
 
 		let colour = threshold_colour(value);
 

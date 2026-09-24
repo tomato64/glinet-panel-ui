@@ -7,6 +7,7 @@ import * as uloop from 'uloop';
 import { readfile } from 'fs';
 import * as t64 from './tomato64.uc';
 import { panel_get } from './nvram.uc';
+import { temp_unit } from './temp.uc';
 
 const IFTYPE_AP = 3;
 
@@ -647,6 +648,11 @@ function ports_read() {
 	state.ports = found;
 }
 
+/*
+ * Millidegrees Celsius, and state.temp stays that way: the threshold ladder
+ * and the gauge's sweep are both in Celsius, so converting here would colour a
+ * warm chip as a burning one. The system page converts what it prints.
+ */
 function temp_read() {
 	let milli = file_read('/sys/class/thermal/thermal_zone0/temp');
 
@@ -803,9 +809,12 @@ function weather_read() {
 	if (!cfg)
 		return;
 
+	/* Asked for in the configured unit rather than converted here, so the
+	   service rounds once and the daily highs and lows agree with it. */
 	let url = sprintf('%s?latitude=%.4f&longitude=%.4f&current=%s&daily=%s' +
-			  '&timezone=auto&forecast_days=%d',
-			  WX_HOST, cfg.lat, cfg.lon, WX_CURRENT, WX_DAILY, WX_DAYS);
+			  '&timezone=auto&forecast_days=%d%s',
+			  WX_HOST, cfg.lat, cfg.lon, WX_CURRENT, WX_DAILY, WX_DAYS,
+			  temp_unit() == 'f' ? '&temperature_unit=fahrenheit' : '');
 
 	wx_busy = true;
 

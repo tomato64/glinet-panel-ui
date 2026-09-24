@@ -4,6 +4,7 @@ import { C_RULE, W, SEP_H, RULE_PAD } from '../lib/theme.uc';
 import { box_new, header_new } from '../lib/widget.uc';
 import { body_new, cell_set } from '../lib/layout.uc';
 import { gauge_new } from '../lib/component/gauge.uc';
+import { temp_from_c, temp_mark } from '../lib/temp.uc';
 
 /* Read over 30 to 90, so a cold chip draws a short arc rather than an empty
    ring. The colour still comes from the raw reading. */
@@ -11,7 +12,6 @@ const TEMP_LOW	= 30;
 const TEMP_HIGH	= 90;
 
 const PER_CENT	= '%';
-const DEGREE	= uchr(0xb0);
 
 let gauges = {};
 let state;
@@ -31,7 +31,8 @@ function page_build(parent, ctx) {
 				      rows: [ '1fr', 'content', '1fr' ] });
 
 	gauges.cpu = gauge_at(grid, 0, 0, { caption: 'CPU', unit: PER_CENT });
-	gauges.temp = gauge_at(grid, 1, 0, { caption: 'Temp', unit: DEGREE,
+	gauges.temp = gauge_at(grid, 1, 0, { caption: 'Temp', unit: temp_mark(),
+					     convert: temp_from_c,
 					     low: TEMP_LOW, high: TEMP_HIGH });
 
 	let rule = box_new(grid, C_RULE, 0);
