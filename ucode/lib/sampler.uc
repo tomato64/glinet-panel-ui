@@ -638,6 +638,7 @@ function ports_read() {
 		let counters = netdev_counters(port.device);
 
 		push(found, { name: port.name, device: port.device,
+			      role: port.role,
 			      up: link?.up ?? false, speed: link?.speed,
 			      duplex: link?.duplex,
 			      rx: counters?.rx, tx: counters?.tx });

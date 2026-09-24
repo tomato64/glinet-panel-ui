@@ -24,7 +24,6 @@
 'use strict';
 
 import { api_get } from './api.uc';
-import { readfile } from 'fs';
 
 function mask_len(mask) {
 	let bits = 0;
@@ -117,55 +116,22 @@ export function vpn() {
 	return api_get('vpn')?.vpn ?? [];
 };
 
-function eth_index(dev) {
-	let m = match(dev, /([0-9]+)$/);
-
-	return m ? +m[1] : 999;
-}
-
-function dt_label(dev) {
-	return trim(readfile(`/sys/class/net/${dev}/of_node/label`) ?? '', '\x00\n ');
-}
-
 /*
- * The WAN port and the LAN bridge's member ports, in ethN order, which on
- * Tomato64 is left-to-right across the chassis because set_devs_<board>
- * numbers them that way.
+ * The chassis ports, named and ordered by the API: the WAN and the LAN
+ * bridge's members in ethN order, carrying whatever the Port Labels page calls
+ * them. The naming lives there rather than here so that the panel and the web
+ * interface never disagree about which socket is which.
  *
- * pages/ports.uc draws an SFP cage for a port whose name contains "sfp" and
- * a jack otherwise. Tomato64 renames the SFP netdev to a plain ethN, but the
- * device tree label survives in sysfs, so the cage is found from that rather
- * than from a per-board table.
+ * The role travels with each port, so pages/ports.uc can draw an SFP cage for
+ * the fibre socket without having to recognise it by name - which stops being
+ * possible the moment somebody labels it something of their own.
  */
 export function ports() {
-	let wan = api_get('wan')?.wan?.iface;
-	let lan = api_get('lan')?.lan?.ports ?? [];
-	let devs = [];
-
-	if (wan)
-		push(devs, wan);
-
-	for (let d in lan)
-		if (index(devs, d) < 0)
-			push(devs, d);
-
-	devs = sort(devs, (a, b) => eth_index(a) - eth_index(b));
-
 	let out = [];
-	let n = 0;
 
-	for (let d in devs) {
-		let name;
-
-		if (d == wan)
-			name = 'WAN';
-		else if (index(lc(dt_label(d)), 'sfp') >= 0)
-			name = 'SFP+';
-		else
-			name = sprintf('LAN %d', ++n);
-
-		push(out, { name, device: d });
-	}
+	for (let port in api_get('ports')?.ports ?? [])
+		push(out, { name: port.name, device: port.device,
+			    role: port.role });
 
 	return out;
 };

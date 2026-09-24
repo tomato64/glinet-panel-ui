@@ -75,6 +75,12 @@ function rows_split(count, per_row) {
 }
 
 function icon_for(port, tier) {
+	/* The API says outright which socket this is; the name is only a
+	   fallback, and stops being a reliable one the moment somebody labels
+	   their fibre port something else on the Port Labels page. */
+	if (port.role)
+		return port.role == 'sfp' ? tier.cage : tier.jack;
+
 	return index(lc(port.name), 'sfp') >= 0 ? tier.cage : tier.jack;
 }
 
