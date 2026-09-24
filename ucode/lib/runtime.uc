@@ -16,6 +16,9 @@ const LOCK_DEFAULT = 5;
 const LOCK_MIN	= 1;
 const LOCK_MAX	= 30;
 
+/* Minutes, or this for a panel that never leaves the page it is on. */
+const LOCK_NEVER = 0;
+
 const IDLE_BLANK = 'blank';
 const IDLE_ON	= 'on';
 const IDLE_MODES = [ IDLE_BLANK, IDLE_ON ];
@@ -129,7 +132,7 @@ function brightness_save() {
 function settings_read() {
 	let lock = +panel_get('auto_lock');
 
-	if (lock >= LOCK_MIN && lock <= LOCK_MAX)
+	if (lock == LOCK_NEVER || (lock >= LOCK_MIN && lock <= LOCK_MAX))
 		settings.auto_lock = lock;
 
 	let idle = panel_get('idle_mode');
@@ -226,6 +229,11 @@ function wake_request() {
 }
 
 function idle_check() {
+	/* Never: the panel stays on whatever page it was left on. The screen
+	   can still be turned off outright, from stealth mode. */
+	if (settings.auto_lock == LOCK_NEVER)
+		return;
+
 	if (monotonic() - touched < settings.auto_lock * SECONDS_PER_MINUTE)
 		return;
 
