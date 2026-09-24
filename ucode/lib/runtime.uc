@@ -1,10 +1,10 @@
 'use strict';
 
 import * as lv from 'lv';
-import * as uci from 'uci';
 import * as uloop from 'uloop';
 import { writefile, glob, readfile } from 'fs';
 import { monotonic, sampler_awake } from './sampler.uc';
+import { panel_get, panel_set } from './nvram.uc';
 import { view_lock, view_wake, view_pin, activity_watch, wake_watch,
 	 defer_watch, idle_watch, brightness_watch,
 	 nav_flush } from './page.uc';
@@ -20,7 +20,7 @@ const IDLE_BLANK = 'blank';
 const IDLE_ON	= 'on';
 const IDLE_MODES = [ IDLE_BLANK, IDLE_ON ];
 
-const UCI_TRUE	= [ '1', 'on', 'true', 'yes', 'enabled' ];
+const TRUTHY	= [ '1', 'on', 'true', 'yes', 'enabled' ];
 
 const BRIGHT_MIN = 10;
 const BRIGHT_MAX = 100;
@@ -114,73 +114,72 @@ function brightness_get() {
 }
 
 function brightness_save() {
-	let cursor = uci.cursor();
-
-	if (!cursor.load('glinet_panel'))
-		return;
-
-	cursor.set('glinet_panel', '@panel[0]', 'brightness', sprintf('%d', level));
-	cursor.commit('glinet_panel');
+	panel_set('brightness', sprintf('%d', level));
 }
 
+/*
+ * Settings come from nvram here, not from UCI: see lib/nvram.uc. Each one is
+ * still checked before it is taken, because nvram is editable by hand and a
+ * panel that refuses to start over a typo would be worse than one that
+ * ignores it.
+ *
+ * Upstream's per-page `page` sections have no nvram equivalent and nothing in
+ * the tree defines one, so sections stay empty.
+ */
 function settings_read() {
-	let cursor = uci.cursor();
-
-	if (!cursor.load('glinet_panel'))
-		return;
-
-	let lock = +cursor.get('glinet_panel', '@panel[0]', 'auto_lock');
+	let lock = +panel_get('auto_lock');
 
 	if (lock >= LOCK_MIN && lock <= LOCK_MAX)
 		settings.auto_lock = lock;
 
-	let idle = cursor.get('glinet_panel', '@panel[0]', 'idle_mode');
+	let idle = panel_get('idle_mode');
 
 	if (index(IDLE_MODES, idle) >= 0)
 		settings.idle_mode = idle;
 
-	let pin = cursor.get('glinet_panel', '@panel[0]', 'pin');
+	let pin = panel_get('pin');
 
-	if (type(pin) == 'string' && match(pin, /^[0-9]{6}$/))
+	if (pin != null && match(pin, /^[0-9]{6}$/))
 		settings.pin = pin;
-	else if (pin)
+	else if (pin != null)
 		warn('panel: pin must be six digits, ignoring it\n');
 
-	let bright = cursor.get('glinet_panel', '@panel[0]', 'brightness');
+	let bright = panel_get('brightness');
 
-	if (bright != null && bright != '')
+	if (bright != null)
 		settings.brightness = brightness_clamp(+bright);
 
-	let bg = +cursor.get('glinet_panel', '@panel[0]', 'background');
+	let bg = +panel_get('background');
 
 	if (bg >= BG_NONE && bg <= BG_MAX)
 		settings.background = bg;
 
-	let scroll = cursor.get('glinet_panel', '@panel[0]', 'scroll');
+	let scroll = panel_get('scroll');
 
-	if (scroll != null && scroll != '')
-		settings.scroll = (scroll == '1');
+	if (scroll != null)
+		settings.scroll = (index(TRUTHY, lc(scroll)) >= 0);
 
-	let clock = cursor.get('glinet_panel', '@panel[0]', 'clock_24h');
+	let clock = panel_get('clock_24h');
 
-	if (clock != null && clock != '')
-		settings.clock_24h = (index(UCI_TRUE, lc(clock)) >= 0);
+	if (clock != null)
+		settings.clock_24h = (index(TRUTHY, lc(clock)) >= 0);
 
-	settings.test_pages = (cursor.get('glinet_panel', '@panel[0]', 'test_pages') == '1');
+	settings.test_pages = (index(TRUTHY, lc(panel_get('test_pages') ?? '')) >= 0);
 
-	let listed = cursor.get('glinet_panel', '@panel[0]', 'pages');
+	/* One string, because nvram has no lists: the pages in swipe order,
+	   separated by spaces. */
+	let listed = panel_get('pages');
 
-	if (type(listed) == 'array' && length(listed))
-		settings.pages = listed;
+	if (listed != null) {
+		let names = [];
 
-	let sections = {};
+		for (let name in split(trim(listed), /\s+/))
+			if (length(name))
+				push(names, name);
 
-	cursor.foreach('glinet_panel', 'page', function(section) {
-		if (section.name)
-			sections[section.name] = section;
-	});
-
-	settings.sections = sections;
+		if (length(names))
+			settings.pages = names;
+	}
 }
 
 function activity_mark() {

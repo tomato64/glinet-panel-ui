@@ -1,7 +1,7 @@
 'use strict';
 
 import * as lv from 'lv';
-import * as uci from 'uci';
+import { panel_get } from './nvram.uc';
 import { FONT_TNUM_12, FONT_TNUM_10, FONT_REG_15, FONT_REG_11, FONT_SEMI_21,
 	 FONT_SEMI_15, FONT_REG_13, IMAGE_CHEVRON, IMAGE_EYE,
 	 IMAGE_EYE_OFF } from './assets.uc';
@@ -327,7 +327,7 @@ const GROUP_OPA_MAX = 128;
 let group_opa;
 
 /**
- * card_opacity - how solid a card fill is, from uci list_opacity
+ * card_opacity - how solid a card fill is, from the list_opacity setting
  *
  * Read once per page. 100 is half opacity, not solid.
  *
@@ -339,14 +339,9 @@ export function card_opacity() {
 
 	group_opa = lv.OPA_COVER;
 
-	let cursor = uci.cursor();
+	let raw = panel_get('list_opacity');
 
-	if (!cursor.load('glinet_panel'))
-		return group_opa;
-
-	let raw = cursor.get('glinet_panel', '@panel[0]', 'list_opacity');
-
-	if (raw == null || raw == '')
+	if (raw == null)
 		return group_opa;
 
 	let pct = +raw;

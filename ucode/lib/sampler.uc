@@ -6,6 +6,7 @@ import * as uci from 'uci';
 import * as uloop from 'uloop';
 import { readfile } from 'fs';
 import * as t64 from './tomato64.uc';
+import { panel_get } from './nvram.uc';
 
 const IFTYPE_AP = 3;
 
@@ -693,13 +694,8 @@ const WX_LON_MAX = 180;
 let wx_busy, wx_ts;
 
 function wx_config() {
-	let cursor = uci.cursor();
-
-	if (!cursor.load('glinet_panel'))
-		return null;
-
-	let lat = cursor.get('glinet_panel', '@panel[0]', 'latitude');
-	let lon = cursor.get('glinet_panel', '@panel[0]', 'longitude');
+	let lat = panel_get('latitude');
+	let lon = panel_get('longitude');
 
 	/* Absent is refused here and not by the range test: +null is 0 and 0 is a
 	   latitude, which would put an unset panel in the Gulf of Guinea. */

@@ -1,7 +1,7 @@
 'use strict';
 
 import * as ubus from 'ubus';
-import * as uci from 'uci';
+import { panel_settings } from './nvram.uc';
 
 const PAGE_DIR = '/usr/share/ucode/glinet-panel-ui/pages';
 const SUB_DIR = '/usr/share/ucode/glinet-panel-ui/subpages';
@@ -19,14 +19,14 @@ function published_read() {
 	}
 }
 
+/*
+ * Which options a page may ask for with requires_option. They come from nvram
+ * as panel_<option>, so the names pages use are unchanged - see lib/nvram.uc.
+ */
 function configured_read() {
-	let cursor = uci.cursor();
 	let found = {};
 
-	if (!cursor.load('glinet_panel'))
-		return found;
-
-	for (let option, value in cursor.get_all('glinet_panel', '@panel[0]') ?? {})
+	for (let option, value in panel_settings())
 		if (value != null && value != '')
 			found[option] = true;
 

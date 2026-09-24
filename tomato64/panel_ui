@@ -23,8 +23,6 @@
 #	kill $(cat /var/run/panel_ui.pid)
 
 PANEL=/usr/share/ucode/glinet-panel-ui/panel.uc
-DEFAULTS=/usr/share/glinet-panel-ui/glinet_panel.default
-CONFIG=/etc/config/glinet_panel
 PIDFILE=/var/run/panel_ui.pid
 
 # Bound by lib/remote.uc, sent to by httpd: the web UI's screen page asks for
@@ -63,13 +61,6 @@ fi
 
 mkdir -p "${PIDFILE%/*}"
 echo $$ > "$PIDFILE"
-
-# /etc is tmpfs and rebuilt every boot, so the package cannot ship this in
-# place. Without it the UI falls back to a two-page default.
-if [ ! -f "$CONFIG" ]; then
-	mkdir -p "${CONFIG%/*}"
-	cp "$DEFAULTS" "$CONFIG"
-fi
 
 child=
 stop() {

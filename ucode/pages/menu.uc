@@ -11,7 +11,7 @@
  * menu button in the corner of each of them comes back here.
  *
  * The tiles are built from the page list the framework hands over rather than
- * a list of its own, so a page added to /etc/config/glinet_panel appears here
+ * a list of its own, so a page added to the panel_pages setting appears here
  * with it. A name with no entry in TITLES is shown capitalised, which is right
  * often enough - "ports", "system", "clients" - and wrong quietly rather than
  * leaving a hole.
