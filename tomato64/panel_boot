@@ -1,0 +1,93 @@
+#!/bin/sh
+#
+# Start the front-panel boot splash. Run from set_devs_be14000 as soon as the
+# panel driver is loaded; it shows the splash until the system is up and then
+# starts panel_ui itself (see boot_tomato64.uc).
+#
+# Launched unless stealth mode is on (see set_devs_be14000). nvram panel_boot
+# is only a diagnostic switch, unset normally:
+#   trace  ONE diagnostic boot. The first image that ran this early reset the
+#          board before the splash ever drew, and there is no serial console,
+#          so this records where it gets to on the persistent rootfs:
+#            $TRACEDIR/trace  each step, synced as it is written
+#            $TRACEDIR/dmesg  the kernel log, re-synced every 0.5s
+#          NOT /root or /var: on Tomato64 both are symlinks into tmpfs, and a
+#          reset wipes them. The first trace run proved it the hard way.
+#          It unsets panel_boot and commits BEFORE doing anything else, so
+#          only the one boot is traced.
+#   once   the same one-shot, then the splash at full speed with no tracing -
+#          the trace's own syncs change the timing. Evidence comes from pstore
+#          instead: the kernel keeps the previous boot's console in ramoops,
+#          readable after a reset as /sys/fs/pstore/console-ramoops-0.
+#          Both leave KERN_EMERG "panel_boot:" markers in the kernel log.
+
+APPLET=/usr/share/ucode/glinet-panel-ui/boot_tomato64.uc
+PIDFILE=/var/run/panel_boot.pid
+
+[ -f "$APPLET" ] || exit 0
+
+TRACE=
+KMSG=
+t() { :; }
+
+mode="$(nvram get panel_boot)"
+
+if [ "$mode" = "once" ]; then
+	nvram unset panel_boot
+	nvram commit
+	KMSG=1
+	t() { echo "<0>panel_boot: $*" > /dev/kmsg; }
+fi
+
+if [ "$mode" = "trace" ]; then
+	nvram unset panel_boot
+	nvram commit
+
+	# ext4, part of this package, and swept away by the next upgrade.
+	# panel_boot_dir overrides it, to repeat a run exactly.
+	TRACEDIR="$(nvram get panel_boot_dir)"
+	[ -n "$TRACEDIR" ] || TRACEDIR=/usr/share/glinet-panel-ui/trace
+	mkdir -p "$TRACEDIR"
+	TRACE=$TRACEDIR/trace
+	DMESG=$TRACEDIR/dmesg
+	: > "$TRACE"
+
+	# Bounded, so a boot that survives does not sync forever.
+	(
+		n=0
+		while [ "$n" -lt 240 ]; do
+			dmesg > "$DMESG.tmp" && mv "$DMESG.tmp" "$DMESG"
+			sync
+			sleep 0.5
+			n=$((n + 1))
+		done
+	) &
+
+	KMSG=1
+	t() {
+		echo "<0>panel_boot: $*" > /dev/kmsg
+		echo "$(cut -d' ' -f1 /proc/uptime) $*" >> "$TRACE"
+		sync
+	}
+fi
+
+t "panel_boot start"
+
+# devtmpfs creates the node as the driver binds; allow it a moment anyway.
+i=0
+while [ ! -e /dev/dri/card0 ] && [ "$i" -lt 25 ]; do
+	sleep 0.2
+	i=$((i + 1))
+done
+
+[ -e /dev/dri/card0 ] || { t "no card0"; logger -t panel_boot "no /dev/dri/card0"; exit 0; }
+
+t "card0 present after $i polls"
+
+mkdir -p "${PIDFILE%/*}"
+
+# exec keeps this PID, which is the one panel.uc will SIGTERM on handover.
+echo $$ > "$PIDFILE"
+
+t "exec applet"
+PANEL_BOOT_TRACE="$TRACE" PANEL_BOOT_KMSG="$KMSG" exec /usr/bin/ucode "$APPLET"

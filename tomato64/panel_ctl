@@ -1,0 +1,140 @@
+#!/bin/sh
+#
+# Turn the front-panel screen on or off now, and say what it is doing.
+#
+# At boot set_devs_be14000 decides this from stealth mode, the same setting
+# that turns off the LEDs on boards that have them - on this one the screen is
+# all there is to turn off. The web UI's screen page writes that setting and
+# then calls this, so the change takes effect without a reboot.
+#
+#	panel_ctl start|stop|restart|status
+#
+# The UI is panel_ui, which supervises the ucode process; stopping it stops
+# that too. The backlight is separate from the UI - it is a kernel device that
+# is lit whether or not anything is drawing - so it is switched here as well,
+# or "off" would leave a lit blank screen.
+
+PANEL=/usr/share/ucode/glinet-panel-ui/panel.uc
+PIDFILE=/var/run/panel_ui.pid
+SAVED=/var/run/panel_backlight
+
+running() {
+	[ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null
+}
+
+panel_pids() {
+	for proc in /proc/[0-9]*; do
+		[ -r "$proc/cmdline" ] || continue
+
+		case "$(tr '\0' ' ' < "$proc/cmdline")" in
+		*"$PANEL"*)
+			echo "${proc#/proc/}"
+			;;
+		esac
+	done
+}
+
+# A supervisor that is killed outright, rather than asked to stop, leaves its
+# UI behind - and that orphan still holds the display and the ubus name, so the
+# next one starts into a panel it cannot draw on. Nothing else runs panel.uc,
+# so anything still running it here is an orphan.
+#
+# Escalates, because one wedged in the display has been seen to take the polite
+# signal and carry on regardless.
+panel_sweep() {
+	local pids i
+
+	pids="$(panel_pids)"
+
+	[ -n "$pids" ] || return 0
+
+	kill $pids 2>/dev/null
+
+	i=0
+	while [ -n "$(panel_pids)" ] && [ "$i" -lt 20 ]; do
+		usleep 100000 2>/dev/null || sleep 1
+		i=$((i + 1))
+	done
+
+	pids="$(panel_pids)"
+
+	[ -n "$pids" ] && kill -9 $pids 2>/dev/null
+
+	return 0
+}
+
+# Remembered across an off/on cycle, since the panel UI's own brightness
+# setting lives in its config and is only applied when it starts.
+backlight_off() {
+	for bl in /sys/class/backlight/*; do
+		[ -e "$bl/brightness" ] || continue
+
+		cat "$bl/brightness" > "$SAVED" 2>/dev/null
+		echo 0 > "$bl/brightness" 2>/dev/null
+	done
+}
+
+backlight_on() {
+	level="$(cat "$SAVED" 2>/dev/null)"
+
+	for bl in /sys/class/backlight/*; do
+		[ -e "$bl/brightness" ] || continue
+
+		[ -n "$level" ] && [ "$level" != "0" ] || level="$(cat "$bl/max_brightness" 2>/dev/null)"
+		[ -n "$level" ] || level=100
+
+		echo "$level" > "$bl/brightness" 2>/dev/null
+	done
+
+	rm -f "$SAVED"
+}
+
+case "$1" in
+start)
+	backlight_on
+
+	# A pidfile left by a supervisor that was killed rather than stopped.
+	running || rm -f "$PIDFILE"
+
+	if running; then
+		exit 0
+	fi
+
+	panel_sweep
+
+	setsid /usr/bin/panel_ui < /dev/null > /dev/null 2>&1 &
+	;;
+stop)
+	if running; then
+		kill "$(cat "$PIDFILE")" 2>/dev/null
+
+		# Waited for, not assumed: the supervisor tears down its child
+		# and its socket on the way out, and a start that overlapped
+		# that would see it still alive and decline to run.
+		i=0
+		while running && [ "$i" -lt 30 ]; do
+			usleep 100000 2>/dev/null || sleep 1
+			i=$((i + 1))
+		done
+
+		rm -f "$PIDFILE"
+	fi
+
+	panel_sweep
+
+	backlight_off
+	;;
+restart)
+	"$0" stop
+	"$0" start
+	;;
+status)
+	running && echo "running" || echo "stopped"
+	;;
+*)
+	echo "usage: ${0##*/} start|stop|restart|status" >&2
+	exit 1
+	;;
+esac
+
+exit 0

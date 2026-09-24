@@ -1,0 +1,111 @@
+#!/bin/sh
+#
+# Run the front-panel UI, and keep it running.
+#
+# Upstream relies on procd to respawn panel.uc. Tomato64 has no procd, so this
+# supervises it instead, for the two ways it can be lost:
+#
+# - It exits. libubus's default connection_lost handler calls uloop_end(), so
+#   losing ubus is meant to end the process - that is how upstream recovers,
+#   with procd starting a fresh one.
+#
+# - ubusd restarts under it without that happening. Tomato64's WiFi restart
+#   kills ubusd (rc/wifi.c), which any save on the wireless page triggers.
+#   Measured on the BE14000: panel.uc survives, but its lvgl object is gone
+#   and nothing re-registers it. So the ubusd PID is watched, and a new one
+#   restarts the UI once ubusd is back.
+#
+# Started once by the boot applet (boot_tomato64.uc) at the end of the boot,
+# with GLINET_PANEL_BOOT_PID naming the applet's pidfile; panel.uc retires the
+# applet after its first frame. That handover applies to the first start only.
+#
+# To stop the UI for good, stop this script, not panel.uc:
+#	kill $(cat /var/run/panel_ui.pid)
+
+PANEL=/usr/share/ucode/glinet-panel-ui/panel.uc
+DEFAULTS=/usr/share/glinet-panel-ui/glinet_panel.default
+CONFIG=/etc/config/glinet_panel
+PIDFILE=/var/run/panel_ui.pid
+
+# Bound by lib/remote.uc, sent to by httpd: the web UI's screen page asks for
+# captures and sends pointer samples through it. Removed when the UI stops, so
+# that httpd can tell a screen that is off from one that is merely busy.
+REMOTE=/var/run/panel_remote
+
+WATCH_S=3
+
+# The evdev number is not stable - it moves if modules are reloaded - so match
+# on the device name, never on a fixed node.
+touch_device() {
+	local event name
+
+	for event in /sys/class/input/event*; do
+		[ -e "$event/device/name" ] || continue
+
+		read -r name < "$event/device/name"
+
+		case "$name" in
+		*cst3*|*CST3*|*[Tt]ouch*)
+			echo "/dev/input/${event##*/}"
+			return
+			;;
+		esac
+	done
+}
+
+[ -f "$PANEL" ] || { echo "$PANEL missing" >&2; exit 1; }
+
+# One supervisor only: two would fight over DRM master.
+if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+	echo "panel_ui already running as $(cat "$PIDFILE")" >&2
+	exit 0
+fi
+
+mkdir -p "${PIDFILE%/*}"
+echo $$ > "$PIDFILE"
+
+# /etc is tmpfs and rebuilt every boot, so the package cannot ship this in
+# place. Without it the UI falls back to a two-page default.
+if [ ! -f "$CONFIG" ]; then
+	mkdir -p "${CONFIG%/*}"
+	cp "$DEFAULTS" "$CONFIG"
+fi
+
+child=
+stop() {
+	[ -n "$child" ] && kill "$child" 2>/dev/null
+	rm -f "$PIDFILE" "$REMOTE"
+	exit 0
+}
+trap stop TERM INT
+
+while :; do
+	touch="$(touch_device)"
+	[ -n "$touch" ] || logger -t panel_ui "WARNING: no touch device found, running without input"
+
+	ubus_pid="$(pidof ubusd)"
+
+	PANEL_TOUCH_DEVICE="$touch" /usr/bin/ucode "$PANEL" &
+	child=$!
+
+	# The applet is retired by the first start; later ones must not look for it.
+	unset GLINET_PANEL_BOOT_PID
+
+	while kill -0 "$child" 2>/dev/null; do
+		sleep "$WATCH_S"
+
+		now="$(pidof ubusd)"
+
+		# ubusd is back under a new PID: this UI's ubus connection is dead.
+		if [ -n "$now" ] && [ "$now" != "$ubus_pid" ]; then
+			logger -t panel_ui "ubusd restarted, restarting the UI"
+			kill "$child" 2>/dev/null
+			break
+		fi
+	done
+
+	wait "$child" 2>/dev/null
+	child=
+
+	sleep 1
+done
