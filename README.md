@@ -2,7 +2,7 @@
 
 > **This is Tomato64's fork** of [blogic/glinet-panel-ui](https://github.com/blogic/glinet-panel-ui),
 > carrying the changes that let the panel run on [Tomato64](https://tomato64.org)
-> firmware rather than OpenWrt. Work happens on the `tomato64` branch; upstream
+> firmware rather than OpenWrt. Work happens on `master`; upstream
 > is merged in with `git merge upstream/main`, and anything useful to everyone
 > is meant to go back as a pull request. Everything below is blogic's, and so is
 > the design.
