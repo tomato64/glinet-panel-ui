@@ -50,7 +50,7 @@ export function wan_device() {
  */
 export function interfaces() {
 	let wan = api_get('wan')?.wan;
-	let lan = api_get('lan')?.lan;
+	let lan = api_get('lan')?.lan ?? [];
 	let out = {};
 
 	if (wan)
@@ -64,13 +64,22 @@ export function interfaces() {
 			'dns-server': wan.dns ?? []
 		};
 
-	if (lan)
-		out.lan = {
-			up: true,
-			device: lan.ifname,
-			l3_device: lan.ifname,
-			'ipv4-address': ipv4(lan.ipaddr, lan.netmask)
+	/*
+	 * One entry per LAN bridge. The names match what the web interface
+	 * calls them - LAN for br0, then LAN1 and up - because the pages
+	 * upper-case the key, and somebody reading the panel should see the
+	 * same name they configured the bridge under.
+	 */
+	for (let bridge in lan) {
+		let key = bridge.index ? sprintf('lan%d', bridge.index) : 'lan';
+
+		out[key] = {
+			up: !!bridge.up,
+			device: bridge.ifname,
+			l3_device: bridge.ifname,
+			'ipv4-address': ipv4(bridge.ipaddr, bridge.netmask)
 		};
+	}
 
 	return out;
 };
