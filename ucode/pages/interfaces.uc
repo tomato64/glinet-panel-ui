@@ -10,12 +10,24 @@ const SUFFIX = [ '6', '_4', '_6' ];
 let state, activity, open;
 let list;
 
+/*
+ * netifd calls the IPv6 half of an interface wan6, lan6, lan_6: the same
+ * device under another name. A Tomato64 LAN bridge can also be called lan6 -
+ * it is the seventh bridge, br6, an interface in its own right - so the name
+ * alone cannot tell them apart and the device decides.
+ */
+function same_device(a, b) {
+	return a && b && (a.l3_device ?? a.device) == (b.l3_device ?? b.device);
+}
+
 function is_variant(name) {
 	for (let suffix in SUFFIX) {
 		let base = substr(name, 0, length(name) - length(suffix));
 
-		if (base && substr(name, length(base)) == suffix &&
-		    state.iface[base])
+		if (!base || substr(name, length(base)) != suffix)
+			continue;
+
+		if (same_device(state.iface[base], state.iface[name]))
 			return true;
 	}
 

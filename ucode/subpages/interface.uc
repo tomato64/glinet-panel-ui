@@ -14,14 +14,29 @@ let state, activity;
 let list;
 let base;
 
+/*
+ * netifd calls the IPv6 half of an interface wan6, lan6, lan_6: the same
+ * device under another name. A Tomato64 LAN bridge can also be called lan6 -
+ * it is the seventh bridge, br6, an interface in its own right - so the name
+ * alone cannot tell them apart and the device decides.
+ */
+function same_device(a, b) {
+	return a && b && (a.l3_device ?? a.device) == (b.l3_device ?? b.device);
+}
+
 function objects_of() {
 	let out = [];
 
 	for (let suffix in SUFFIX) {
 		let entry = state.iface[base + suffix];
 
-		if (entry)
-			push(out, entry);
+		if (!entry)
+			continue;
+
+		if (suffix != '' && !same_device(state.iface[base], entry))
+			continue;
+
+		push(out, entry);
 	}
 
 	return out;
