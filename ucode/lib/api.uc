@@ -8,8 +8,9 @@
  *
  * Three facts about httpd shape this file:
  *
- * - It binds to lan_ipaddr, not 0.0.0.0, so 127.0.0.1 does not connect.
- *   The address and port are read from nvram like any other client would.
+ * - Its LAN listeners can be HTTPS-only, and this client speaks plain HTTP.
+ *   So it uses the Unix socket httpd keeps for the panel, which answers
+ *   plain HTTP whatever the LAN side is set to.
  *
  * - It authenticates with HTTP Basic against http_username/http_passwd, and
  *   substitutes root/admin when either is empty. The panel authenticates the
@@ -30,6 +31,7 @@
 import * as socket from 'socket';
 import { popen } from 'fs';
 
+const SOCK = '/var/run/httpd.sock';
 const TIMEOUT_MS = 2000;
 
 let cfg = null;
@@ -52,14 +54,12 @@ function config_load() {
 	let pass = nvram_get('http_passwd');
 
 	cfg = {
-		host: nvram_get('lan_ipaddr') || '192.168.1.1',
-		port: +(nvram_get('http_lanport') || '80'),
 		auth: b64enc(`${length(user) ? user : 'root'}:${length(pass) ? pass : 'admin'}`)
 	};
 }
 
 function fetch(path) {
-	let s = socket.connect(cfg.host, cfg.port, null, TIMEOUT_MS);
+	let s = socket.connect(SOCK, null, null, TIMEOUT_MS);
 
 	if (!s)
 		return { status: 0 };
@@ -68,7 +68,7 @@ function fetch(path) {
 		 { sec: TIMEOUT_MS / 1000, usec: 0 });
 
 	s.send(`GET /api/v1/${path} HTTP/1.0\r\n` +
-	       `Host: ${cfg.host}\r\n` +
+	       `Host: localhost\r\n` +
 	       `Authorization: Basic ${cfg.auth}\r\n` +
 	       `Connection: close\r\n\r\n`);
 

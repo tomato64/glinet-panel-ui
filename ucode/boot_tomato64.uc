@@ -146,7 +146,7 @@ function wan_routed() {
 	return false;
 }
 
-/* Only worth asking once the LAN is up: httpd listens on its address. */
+/* Asked only once the LAN is up, so the tomato reaches the end in order. */
 function ui_ready() {
 	return lan_up() && api_get('ping') != null;
 }
