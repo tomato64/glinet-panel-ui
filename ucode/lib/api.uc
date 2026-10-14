@@ -17,6 +17,9 @@
  *   same way rather than through any bypass, so it adds no new access path.
  *   A 401 re-reads the credentials once, which is what makes a password
  *   change in the GUI take effect without restarting the panel.
+ *   It also hands out a session cookie, and counts a request without one as
+ *   a new login: a syslog line and a session file under /tmp/httpd each. So
+ *   the cookie is kept and sent back, the way a browser does.
  *
  * - It answers HTTP/1.0 and closes, so a response is read to EOF with no
  *   chunked decoding and no keep-alive.
@@ -32,6 +35,7 @@ import * as socket from 'socket';
 import { popen } from 'fs';
 
 const SOCK = '/var/run/httpd.sock';
+const COOKIE = 'tomato_gui_session';
 const TIMEOUT_MS = 2000;
 
 let cfg = null;
@@ -54,7 +58,8 @@ function config_load() {
 	let pass = nvram_get('http_passwd');
 
 	cfg = {
-		auth: b64enc(`${length(user) ? user : 'root'}:${length(pass) ? pass : 'admin'}`)
+		auth: b64enc(`${length(user) ? user : 'root'}:${length(pass) ? pass : 'admin'}`),
+		cookie: null
 	};
 }
 
@@ -70,6 +75,7 @@ function fetch(path) {
 	s.send(`GET /api/v1/${path} HTTP/1.0\r\n` +
 	       `Host: localhost\r\n` +
 	       `Authorization: Basic ${cfg.auth}\r\n` +
+	       (cfg.cookie ? `Cookie: ${COOKIE}=${cfg.cookie}\r\n` : '') +
 	       `Connection: close\r\n\r\n`);
 
 	let buf = '';
@@ -90,7 +96,12 @@ function fetch(path) {
 	if (sep < 0)
 		return { status: 0 };
 
-	let m = match(substr(buf, 0, sep), /^HTTP\/[0-9.]+ ([0-9]+)/);
+	let head = substr(buf, 0, sep);
+	let m = match(head, /^HTTP\/[0-9.]+ ([0-9]+)/);
+	let c = match(head, regexp(`\r\nSet-Cookie: ${COOKIE}=([^;\r]*)`, 'i'));
+
+	if (c)
+		cfg.cookie = length(c[1]) ? c[1] : null;
 
 	return { status: m ? +m[1] : 0, body: substr(buf, sep + 4) };
 }
